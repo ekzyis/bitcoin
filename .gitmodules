@@ -1,0 +1,3 @@
+[submodule "bitcoin-nix-tools"]
+	path = bitcoin-nix-tools
+	url = git@github.com:ekzyis/bitcoin-nix-tools
