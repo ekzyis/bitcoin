@@ -43,6 +43,8 @@ from .util import (
     p2p_port,
     tor_port,
 )
+from .script import hash160
+
 
 BITCOIND_PROC_WAIT_TIMEOUT = 60
 # The size of the blocks xor key
@@ -105,7 +107,6 @@ class TestNode():
         self.stdout_dir = self.datadir_path / "stdout"
         self.stderr_dir = self.datadir_path / "stderr"
         self.chain = chain
-        self.signet_chain = ""
         self.rpchost = rpchost
         self.rpc_timeout = timewait  # Already multiplied by timeout_factor
         self.timeout_factor = timeout_factor
@@ -216,9 +217,6 @@ class TestNode():
             AddressKeyPair('mzRe8QZMfGi58KyWCse2exxEFry2sfF2Y7', 'cPiRWE8KMjTRxH1MWkPerhfoHFn5iHPWVK5aPqjW8NxmdwenFinJ'),
     ]
 
-    def get_chain(self):
-        return self.signet_chain if self.signet_chain and self.chain == 'signet' else self.chain
-
     def get_deterministic_priv_key(self):
         """Return a deterministic priv key in base58, that only depends on the node's index"""
         assert len(self.PRIV_KEYS) == MAX_NODES
@@ -321,7 +319,7 @@ class TestNode():
                     f'bitcoind exited with status {self.process.returncode} during initialization. {str_error}'))
             try:
                 rpc = get_rpc_proxy(
-                    rpc_url(self.datadir_path, self.index, self.get_chain(), self.rpchost),
+                    rpc_url(self.datadir_path, self.index, self.chain_dir, self.rpchost),
                     self.index,
                     timeout=self.rpc_timeout // 2,  # Shorter timeout to allow for one retry in case of ETIMEDOUT
                     coveragedir=self.coverage_dir,
@@ -396,7 +394,7 @@ class TestNode():
         poll_per_s = 4
         for _ in range(poll_per_s * self.rpc_timeout):
             try:
-                get_auth_cookie(self.datadir_path, self.get_chain())
+                get_auth_cookie(self.datadir_path, self.chain_dir)
                 self.log.debug("Cookie credentials successfully retrieved")
                 return
             except ValueError:  # cookie file not found and no rpcuser or rpcpassword; bitcoind is still starting
@@ -521,7 +519,17 @@ class TestNode():
 
     @property
     def chain_path(self) -> Path:
-        return self.datadir_path / self.get_chain()
+        return self.datadir_path / self.chain_dir
+
+    @property
+    def chain_dir(self) -> str:
+        if self.chain == "signet":
+            for arg in self.extra_args:
+                if arg.startswith('-signetchallenge'):
+                    signetchallenge = arg.split('=')[1]
+                    data_dir_suffix = hash160(bytes.fromhex(signetchallenge)).hex()[0:8]
+                    return self.datadir_path / f"signet_{data_dir_suffix}"
+        return self.chain
 
     @property
     def debug_log_path(self) -> Path:
